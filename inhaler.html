@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Satisfactory Inhaler Optimizer</title>
+        <style>
+            :root {
+                --zeroCellColor: default;
+            }
+            html { color-scheme: dark; }
+            body { color: white; font-family: sans-serif; background: #131313; margin:10px; padding: 0px; }
+            table {border-collapse: collapse; margin: 15px 5px;}
+            td, th { padding: 5px 10px; border: 1px solid #99673A }
+            th { background: #323232 }
+            h1, #config h3 { color: #e59344; }
+            h1 { font-variant: small-caps; }
+            td.numeric_cell, th.numeric_cell { text-align: right }
+            input[type="number"] {
+                color: white;
+                width: 4em;
+                padding-right: 0px;
+                padding-left: 4px;
+                padding-top: 1px;
+                padding-bottom: 1px;
+            }
+            .zeroCell { color: var(--zeroCellColor) }
+
+            button {
+                padding: 3px 10px 5px;
+                border: 1px solid #e07c1a;
+                border-radius: 3px;
+            }
+            button.add_stack { 
+                padding: 1px 5px;
+                margin-left: 2px;
+                border-color: #999;
+            }
+            p {
+                padding: 5px 10px;
+            }
+            h3 {
+                margin-top: 10px;
+            }
+            .config {
+                color: silver;
+                background: none;
+                border: none;
+                font-size: 0.75em;
+            }
+            #config {
+                padding: 0px 10px 5px;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Satisfactory Inhaler Optimizer<button class="config" popovertarget="config">⚙</button></h1>
+        <div popover=auto id="config">
+            <h3>Configuration</h3>
+            <p><label>Display Zeros in Output as:
+                <select id="zero-config">
+                    <option value="inherit">Default</option>
+                    <option value="#555">Muted</option>
+                    <option value="transparent">Transparent</option>
+                </select>
+            </label></p>
+        </div>
+        <h3>Ingredients Available</h3>
+        <table id="input">
+        </table>
+        <p><button id="solve">Solve</button></p>
+        <div id="output"></div>
+    </body>
+    <script>(() => {
+        const zeroConfig = document.getElementById("zero-config");
+        function doZeroConfig() {
+            document.documentElement.style.setProperty("--zeroCellColor", zeroConfig.value);
+        }
+        zeroConfig.addEventListener("change", doZeroConfig);
+        doZeroConfig();
+        const INGREDIENTS = [
+            {name: "Bacon Agaric", id: "bacon_agaric", step: 1, stackSize: 50},
+            {name: "Paleberries", id: "paleberries", step: 1, stackSize: 50},
+            {name: "Beryl Nuts", id: "beryl_nuts", step: 5, stackSize: 100},
+            {name: "Mycelia", id: "mycelia", step: 5, stackSize: 200},
+            {name: "Alien Protein", id: "protein", step: 1, stackSize: 100},
+        ];
+        const inputTable = document.getElementById("input");
+        const headerRow = ac(inputTable, e("tr"));
+        const inputRow = ac(inputTable, e("tr"));
+        for(const ingredient of INGREDIENTS) {
+            ac(headerRow, e("th", {}, t(ingredient.name)));
+            const addStack = e("button", {"class": "add_stack", title: "Add Stack"}, t("+ \u25A4"))
+            const input = e("input", {type: "number", id: ingredient.id, value: 0, min: 0, step: ingredient.step});
+            ac(inputRow, e("td", {}, input, addStack,));
+            addStack.addEventListener("click", () => {
+                input.value = parseInt(input.value) + ingredient.stackSize;
+            });
+        }
+        document.querySelectorAll("input[type=number]").forEach((el) => {el.addEventListener("wheel", (e) => {
+            el.value = Math.max(0, parseInt(el.value) - el.step * Math.sign(event.deltaY));
+            e.preventDefault();
+        })});
+        const RECIPES = [
+            {name: "Nutritional Inhaler", inhalers: 1, bacon_agaric: 1, paleberries: 2, beryl_nuts:  5, mycelia:  0, protein: 0},
+            {name: "Protein Inhaler",     inhalers: 1, bacon_agaric: 0, paleberries: 0, beryl_nuts: 10, mycelia:  0, protein: 1},
+            {name: "Theraputic Inhaler",  inhalers: 1, bacon_agaric: 1, paleberries: 0, beryl_nuts:  0, mycelia: 15, protein: 1},
+            {name: "Vitamin Inhaler",     inhalers: 1, bacon_agaric: 0, paleberries: 5, beryl_nuts:  0, mycelia: 10, protein: 0},
+        ];
+        let recipe_id = 0;
+        for(recipe of RECIPES) {
+            recipe.id = recipe_id++;
+        }
+        function getInput() {
+            const input = {};
+            for (const ingredient of INGREDIENTS) {
+                input[ingredient.id] = parseInt(document.getElementById(ingredient.id).value);
+            }
+            return input;
+        }
+        function e(tag, attrs, ...children) {
+            const el = document.createElement(tag);
+            if(attrs !== undefined) {
+                for(k of Object.keys(attrs)) {
+                    el.setAttribute(k, attrs[k]);
+                }
+            }
+            if(children !== undefined) {
+                for(c of children) {
+                    el.appendChild(c);
+                }
+            }
+            return el;
+        }
+        function t(contents) {
+            return document.createTextNode(contents);
+        }
+        function ac(parent, child) {
+            parent.appendChild(child);
+            return child;
+        }
+        document.getElementById("solve").addEventListener("click", () => {
+            const solution = solve(getInput(), RECIPES);
+            const outDiv = document.getElementById("output");
+            outDiv.innerHTML = "";
+            ac(outDiv, e("h3",{},t("Maximum Total Inhalers: " + solution.inhalers)));
+            const craftsDiv = ac(outDiv, e("div"));
+            for(const craft of solution.crafts) {
+                const optionTable = ac(craftsDiv, e("table"));
+                const optionHeader = ac(optionTable, e("tr"));
+                ac(optionHeader, e("th", {}, t("Recipe")));
+                ac(optionHeader, e("th", {}, t("Crafts")));
+                for(ingredient of INGREDIENTS) {
+                    ac(optionHeader, e("th", {}, t(ingredient.name)));
+                }
+                for(const recipe of RECIPES) {
+                    if(craft[recipe.id] <= 0) continue;
+                    const recipeRow = ac(optionTable, e("tr", {}, 
+                        e("td", {style: "font-weight: bold"}, t(recipe.name)),
+                        e("td", {class: "numeric_cell", style: "font-weight: bold"}, t(craft[recipe.id]))
+                    ));
+                    for(ingredient of INGREDIENTS) {
+                        const amount = craft[recipe.id] * recipe[ingredient.id] 
+                        ac(recipeRow, e("td", {class: "numeric_cell" + (amount <= 0 ? " zeroCell":"")}, t("" + amount)));
+                    }
+                }
+                const leftoversRow = ac(optionTable, e("tr", {}, e("td", {}, t("Leftovers"))));
+                ac(leftoversRow, e("td"));
+                for(ingredient of INGREDIENTS) {
+                    const amount = craft.leftovers[ingredient.id];
+                    ac(leftoversRow, e("td", {class: "numeric_cell" + (amount <= 0 ? " zeroCell":"")}, t(amount)));
+                }
+            }
+                
+        });
+        function solve(input, recipes) {
+            const output = {inhalers: 0, crafts: []};
+            if(recipes.length == 0) {
+                output.crafts.push({leftovers: input});
+                return output;
+            }
+            const recipe = recipes[0];
+            for(let crafts = maxCrafts(recipe, input); crafts >= 0; crafts--) {
+                const ourInhalers = recipe.inhalers * crafts;
+                const solution = solve(payFor(crafts, recipe, input), recipes.slice(1));
+                const totalInhalers = solution.inhalers + ourInhalers;
+                if (totalInhalers > output.inhalers) {
+                    output.inhalers = totalInhalers;
+                    output.crafts = [];
+                }
+                if (totalInhalers == output.inhalers) {
+                    for(craft of solution.crafts) {
+                        craft[recipe.id] = crafts;
+                        output.crafts.push(craft);
+                    }
+                }
+            }
+            return output;
+        }
+        function maxCrafts(recipe, input) {
+            let max = Number.POSITIVE_INFINITY
+            for(const ingredient of INGREDIENTS) {
+                if(recipe[ingredient.id] !== 0) {
+                    max = Math.min(max, Math.floor(input[ingredient.id] / recipe[ingredient.id]));
+                }
+            }
+            return max;
+        }
+        function payFor(crafts, recipe, input) {
+            const output = {...input}
+            for(const ingredient of INGREDIENTS) {
+                output[ingredient.id] -= recipe[ingredient.id] * crafts;
+            }
+            return output;
+        }
+    })();</script>
+</html>
